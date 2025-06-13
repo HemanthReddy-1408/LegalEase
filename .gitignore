@@ -1,0 +1,28 @@
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.ipynb_checkpoints
+
+# Virtual environment
+env/
+venv/
+.venv/
+*.env
+*.conda
+
+# FAISS index
+rag/vector_store/
+
+# Logs, sessions, cache
+sessions/
+*.log
+*.tmp
+model_cache/
+finetune/qlora-legalease/
+
+# OS-specific
+.DS_Store
+Thumbs.db

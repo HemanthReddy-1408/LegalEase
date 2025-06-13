@@ -1,0 +1,3 @@
+dataset link:
+https://huggingface.co/datasets/Techmaestro369/indian-legal-texts-finetuning?utm_source=chatgpt.com
+
