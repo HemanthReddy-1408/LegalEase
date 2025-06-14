@@ -81,13 +81,21 @@ def initialize_models():
             MODEL_NAME,
             torch_dtype=torch.float16,
             device_map="auto",
-            cache_dir="./model_cache"
+            cache_dir="./model_cache",
+            trust_remote_code=True  # Added this for Falcon models
         )
         
         # Load fine-tuned LoRA adapter if available
-        if os.path.exists("finetune/qlora-legalease"):
+        adapter_path = "finetune/qlora-legalease/checkpoint-1818"
+        if os.path.exists(adapter_path):
             print("🔁 LoRA adapter found — loading fine-tuned model...")
-            model = PeftModel.from_pretrained(base_model, "finetune/qlora-legalease")
+            try:
+                model = PeftModel.from_pretrained(base_model, adapter_path)
+                print("✅ LoRA adapter loaded successfully")
+            except Exception as e:
+                print(f"⚠️ Failed to load LoRA adapter: {e}")
+                print("📌 Using base model instead")
+                model = base_model
         else:
             print("⚠️ LoRA adapter not found. Using base model.")
             model = base_model
@@ -105,7 +113,8 @@ def initialize_models():
             top_p=0.9,
             repetition_penalty=1.1,
             return_full_text=False,
-            pad_token_id=tokenizer.eos_token_id
+            pad_token_id=tokenizer.eos_token_id,
+            trust_remote_code=True  # Added this
         )
         
         llm = HuggingFacePipeline(pipeline=pipe)
@@ -137,7 +146,7 @@ def get_or_initialize_components():
         if _retriever is None or _llm is None or _memory is None:
             raise RuntimeError("Failed to initialize model components")
         
-        # Create QA chain
+        # Create QA chain with proper configuration
         prompt_template = PromptTemplate(
             input_variables=["context", "question"],
             template="""You are a legal assistant specializing in Indian law.
@@ -157,11 +166,14 @@ Question:
 Answer:"""
         )
         
-        _qa_chain = ConversationalRetrievalChain.from_llm(
+        # Alternative Fix: Create a simple QA chain without conversational memory
+        from langchain.chains import RetrievalQA
+        
+        _qa_chain = RetrievalQA.from_chain_type(
             llm=_llm,
+            chain_type="stuff",
             retriever=_retriever,
-            memory=_memory,
-            combine_docs_chain_kwargs={"prompt": prompt_template},
+            chain_type_kwargs={"prompt": prompt_template},
             return_source_documents=True
         )
     
@@ -196,8 +208,8 @@ def generate_answer(question: str, session_id: str = None, debug: bool = False) 
         
         # Generate response with memory cleanup
         with gpu_memory_cleanup():
-            # Get relevant documents first (for debugging)
-            docs = retriever.get_relevant_documents(question)
+            # Get relevant documents first (for debugging and sources)
+            docs = retriever.invoke(question)  # Updated to use invoke instead of deprecated method
             
             if debug and docs:
                 print(f"\n📚 Retrieved {len(docs)} relevant documents:")
@@ -205,11 +217,49 @@ def generate_answer(question: str, session_id: str = None, debug: bool = False) 
                     section = doc.metadata.get("section", "Unknown")
                     print(f"[Doc {i+1}] Section {section}: {doc.page_content[:200]}...")
             
-            # Generate answer using the chain
-            result = qa_chain.invoke({"question": question})
-            
-            response = result["answer"].strip()
-            source_docs = result.get("source_documents", docs)
+            # Generate answer using the simpler QA chain
+            try:
+                # Use RetrievalQA which doesn't have the memory issue
+                result = qa_chain.invoke({"query": question})
+                
+                # Extract answer and source documents
+                if isinstance(result, dict):
+                    response = result.get("result", "").strip()
+                    source_docs = result.get("source_documents", docs)
+                else:
+                    response = str(result).strip()
+                    source_docs = docs
+                
+                # Manually save to memory
+                if memory and response:
+                    memory.save_context({"input": question}, {"output": response})
+                    
+            except Exception as chain_error:
+                print(f"⚠️ Chain error: {chain_error}")
+                # Fallback: Use retriever + LLM directly
+                context = "\n\n".join([doc.page_content for doc in docs[:3]])
+                prompt = f"""You are a legal assistant specializing in Indian law.
+
+Answer the user's question **ONLY using the provided context below**.
+If the answer is not in the context, say: "I'm not sure based on the available information."
+
+Be concise, accurate, and cite specific sections when mentioned.
+
+----------------------
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:"""
+                
+                response = llm.invoke(prompt).strip()
+                source_docs = docs
+                
+                # Save to memory in fallback case too
+                if memory and response:
+                    memory.save_context({"input": question}, {"output": response})
         
         # Process and clean response
         if not response or len(response) < 5:

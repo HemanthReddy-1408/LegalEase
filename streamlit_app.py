@@ -15,19 +15,20 @@ st.set_page_config(
 )
 
 # Custom CSS for better styling
+# Custom CSS for better styling
 st.markdown("""
 <style>
     .main-header {
         text-align: center;
-        color: #1f4e79;
-        font-size: 2.5rem;
-        font-weight: bold;
+        color: #123456;
+        font-size: 2.7rem;
+        font-weight: 700;
         margin-bottom: 0.5rem;
     }
     .sub-header {
         text-align: center;
-        color: #666;
-        font-size: 1.1rem;
+        color: #555;
+        font-size: 1.2rem;
         margin-bottom: 2rem;
     }
     .chat-message {
@@ -35,17 +36,22 @@ st.markdown("""
         margin: 0.5rem 0;
         border-radius: 10px;
         border-left: 4px solid #1f4e79;
+        font-size: 1.02rem;
+        line-height: 1.6;
     }
     .user-message {
-        background-color: #f0f8ff;
-        border-left-color: #4CAF50;
+        background-color: #e3f2fd;  /* light blue */
+        border-left-color: #2196f3;
+        font-weight: 500;
     }
     .bot-message {
-        background-color: #f9f9f9;
-        border-left-color: #1f4e79;
+        background-color: #f1f1f1;  /* light gray */
+        border-left-color: #4a148c;
+        color: #000000;
+        font-weight: 500;
     }
     .source-box {
-        background-color: #fff3cd;
+        background-color: #fff7d1;
         padding: 0.5rem;
         border-radius: 5px;
         margin: 0.5rem 0;
@@ -53,30 +59,32 @@ st.markdown("""
         font-size: 0.9rem;
     }
     .confidence-high {
-        color: #28a745;
+        color: #2e7d32;
         font-weight: bold;
     }
     .confidence-medium {
-        color: #ffc107;
+        color: #f9a825;
         font-weight: bold;
     }
     .confidence-low {
-        color: #dc3545;
+        color: #c62828;
         font-weight: bold;
     }
     .stButton > button {
         width: 100%;
         border-radius: 20px;
         border: none;
-        background: linear-gradient(90deg, #1f4e79, #2d5aa0);
+        background: linear-gradient(90deg, #1f4e79, #3f51b5);
         color: white;
         font-weight: bold;
     }
     .stTextInput > div > div > input {
         border-radius: 20px;
+        font-size: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 def initialize_session_state():
     """Initialize session state variables"""
@@ -222,9 +230,12 @@ def main():
             st.metric("Messages", len(st.session_state.chat_history))
             
             # Average confidence
-            confidences = [msg.get("metadata", {}).get("confidence", 0) 
-                          for role, msg, metadata in st.session_state.chat_history 
-                          if role == "bot" and metadata]
+            confidences = [
+                metadata.get("confidence", 0)
+                for role, msg, metadata in st.session_state.chat_history
+                if role == "bot" and isinstance(metadata, dict)
+            ]
+
             if confidences:
                 avg_confidence = sum(confidences) / len(confidences)
                 st.metric("Avg Confidence", f"{avg_confidence:.1%}")
